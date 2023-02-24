@@ -1,6 +1,14 @@
 # Nacos Example base v2.0.4
 
 ## Dynamic config
+### 0. create config in nacos
+    nacos-example.yml >>
+    version: v3.0
+    user:
+        name: Zhang San
+        age: 18
+
+
 ### 1. Send request
 $ curl -X GET http://127.0.0.1:8080/config/version -s
 v1.0
