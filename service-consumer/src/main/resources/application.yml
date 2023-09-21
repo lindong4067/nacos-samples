@@ -8,17 +8,28 @@ management:
         include: '*'
 spring:
   application:
-    name: nacos-example
+    name: service-consumer
   cloud:
     nacos:
       server-addr: 135.252.247.212:8848
-      discovery:
-        weight: 1.0
-        metadata:
-          version: v1
-          command-codes: ADD-ONU,ADD-PONVLAN,DEL-ONU,DEL-PONVLAN
 
   config:
     import:
-      - optional:nacos:nacos-example.yaml
+      - optional:nacos:service-consumer.yml
+      - optional:nacos:user.properties
       - optional:nacos:service.xml
+
+user:
+  name: Zhang San
+  age: 18
+
+cnnbi.topa.application:
+  command-group:
+    enabled: false
+    groups:
+      cnnbi-sa:
+        - ADD-ONU
+        - DEL-ONU
+      cnnbi-in:
+        - LST-ONU
+        - LST-DEVICE

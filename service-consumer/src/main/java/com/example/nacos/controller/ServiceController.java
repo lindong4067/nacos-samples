@@ -3,19 +3,22 @@ package com.example.nacos.controller;
 import com.alibaba.cloud.nacos.NacosServiceManager;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.naming.pojo.Instance;
+import com.alibaba.nacos.api.naming.pojo.ListView;
 import com.alibaba.nacos.api.naming.pojo.ServiceInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 @RestController
 public class ServiceController {
-//    @LoadBalanced
-//    @Autowired
-//    private RestTemplate restTemplate;
+    @Autowired
+    private RestTemplate restTemplate;
 
 //    @LoadBalanced
 //    @Bean
@@ -25,7 +28,9 @@ public class ServiceController {
     @Autowired
     private NacosServiceManager serviceManager;
 
-    @GetMapping("/tl1/v1/{command}")
+    private final Random random = new Random();
+
+    @GetMapping("/tl1/{command}")
     public String invoke(@PathVariable String command) throws NacosException {
         List<ServiceInfo> serviceInfos = serviceManager.getNamingService().getSubscribeServices();
         for (ServiceInfo serviceInfo : serviceInfos) {
@@ -34,11 +39,11 @@ public class ServiceController {
             for (Instance instance : instances) {
                 if (instance.containsMetadata("version")) {
                     String ver = instance.getMetadata().get("version");
-                    if (instance.containsMetadata("command-codes")) {
-                        String codes = instance.getMetadata().get("command-codes");
+                    if (instance.containsMetadata("command-code")) {
+                        String codes = instance.getMetadata().get("command-code");
                         if (codes != null && codes.contains(command)) {
-//                            return restTemplate.getForObject("http://" + serviceName + "/tl1/" + command, String.class);
-                            return ver + "/" + serviceName;
+                            return restTemplate.getForObject("http://" + serviceName + "/tl1/" + command, String.class);
+//                            return ver + "/" + serviceName;
                         }
                     }
                 }
@@ -48,18 +53,27 @@ public class ServiceController {
     }
 
     @GetMapping("/tl1/v2/{command}")
-    public String invoke2(String command) throws NacosException {
-        List<Instance> allInstances = serviceManager.getNamingService().getAllInstances("", true); //Param 'serviceName' is illegal, serviceName is blank
-        for (Instance instance : allInstances) {
-            if (instance.containsMetadata("version") &&
-                    instance.containsMetadata("command-codes") &&
-                    instance.getMetadata().get("command-codes").contains(command)) {
-                String name = instance.getServiceName();
-                String ver = instance.getMetadata().get("version");
-
-                return ver + "/" + name;
+    public String invoke2(@PathVariable String command) throws NacosException {
+        ListView<String> servicesOfServer = serviceManager.getNamingService().getServicesOfServer(1, 10);
+        List<String> services = servicesOfServer.getData();
+        List<String> ipAndPortList = new ArrayList<>();
+        for (String service : services) {
+            List<Instance> allInstances = serviceManager.getNamingService().getAllInstances(service, true);
+            for (Instance instance : allInstances) {
+                if (instance.containsMetadata("command-code") &&
+                        instance.getMetadata().get("command-code").contains(command)) {
+                    ipAndPortList.add(instance.getIp() + ":" + instance.getPort());
+//                    return restTemplate.getForObject("http://" + serviceName + "/tl1/" + command, String.class);
+                }
             }
         }
-        return "command not support";
+        if (ipAndPortList.isEmpty()) {
+            return "unsupported command service";
+        }
+
+        int randomIndex = random.nextInt(ipAndPortList.size());
+        String address = ipAndPortList.get(randomIndex);
+
+        return restTemplate.getForObject("http://" + address + "/tl1/" + command, String.class);
     }
 }

@@ -1,5 +1,5 @@
 server:
-  port: 18080
+  port: 18082
 # For actuator endpoints exposure
 management:
   endpoints:
@@ -8,7 +8,7 @@ management:
         include: '*'
 spring:
   application:
-    name: nacos-example
+    name: service-provider2
   cloud:
     nacos:
       server-addr: 135.252.247.212:8848
@@ -16,9 +16,18 @@ spring:
         weight: 1.0
         metadata:
           version: v1
-          command-codes: ADD-ONU,ADD-PONVLAN,DEL-ONU,DEL-PONVLAN
+          command-group: ${cnnbi.topa.service.command-group}
+          command-code: ${cnnbi.topa.service.command-code}
 
   config:
     import:
-      - optional:nacos:nacos-example.yaml
+      - optional:nacos:service-provider2.yaml
       - optional:nacos:service.xml
+
+user:
+  name: Zhang San
+  age: 18
+
+cnnbi.topa.service:
+  command-group: cnnbi-in
+  command-code: LST-DEVICE,LST-ONU,LST-PORTVLAN
