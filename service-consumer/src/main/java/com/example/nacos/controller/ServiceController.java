@@ -30,7 +30,7 @@ public class ServiceController {
 
     private final Random random = new Random();
 
-    @GetMapping("/tl1/{command}")
+    @GetMapping("/service/tl1/{command}")
     public String invoke(@PathVariable String command) throws NacosException {
         List<ServiceInfo> serviceInfos = serviceManager.getNamingService().getSubscribeServices();
         for (ServiceInfo serviceInfo : serviceInfos) {
