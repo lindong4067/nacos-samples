@@ -20,7 +20,8 @@ public class CommandServiceInvocationHandler implements InvocationHandler {
     private RestTemplate restTemplate;
     private NacosServiceManager serviceManager;
 
-    public <T> CommandServiceInvocationHandler(Class<T> clazz, RoutingPolicy policy, RestTemplate restTemplate, NacosServiceManager serviceManager) {
+    public <T> CommandServiceInvocationHandler(Class<T> clazz, RoutingPolicy policy, RestTemplate restTemplate,
+                                               NacosServiceManager serviceManager) {
         this.clazz = clazz;
         this.policy = policy;
         this.restTemplate = restTemplate;
@@ -75,14 +76,6 @@ public class CommandServiceInvocationHandler implements InvocationHandler {
         return classMataData;
     }
 
-    private MethodMataData handleMethodAnnotation(Method method) {
-        MethodMataData methodMataData = new MethodMataData();
-        Annotation annotation = method.getAnnotation(GetMapping.class);
-
-        //TODO
-        return null;
-    }
-
     private Object handleMethodAnnotation(Method method, Object[] args, RequestMethod requestMethod) {
         ClassMataData classMataData = handleClassAnnotation(clazz);
         MethodMataData methodMataData = new MethodMataData();
@@ -106,41 +99,23 @@ public class CommandServiceInvocationHandler implements InvocationHandler {
     }
 
     private Object doHandleMethodAnnotation(ClassMataData classMataData, MethodMataData methodMataData) {
-        StringBuilder uri = new StringBuilder();
         Map<String, Object> uriVariables = new HashMap<>();
         Object[] uriValues = new Object[1];
-        if (classMataData.baseUrl != null) {
-            uri.append(classMataData.baseUrl);
-        }
         Class<?> returnType = methodMataData.returnType;
+        Object[] args = methodMataData.args;
+        String command = (String) args[0];
+        Optional<Instance> instance = findCommandServiceInstanceByRoutingPolicy(policy, command);
+        if (!instance.isPresent()) {
+            return "Command not support";
+        }
+        StringBuilder url = new StringBuilder();
+        url.append("http://").append(instance.get().getIp()).append(":").append(instance.get().getPort());
+        if (classMataData.baseUrl != null) {
+            url.append(classMataData.baseUrl);
+        }
         if (methodMataData.requestMethod.equals(RequestMethod.GET)) {
-            uri.append(methodMataData.getMapping.value()[0]);
-            Object[] args = methodMataData.args;
-            Annotation[][] parameterAnnotations = methodMataData.parameterAnnotations;
-            for (int i = 0; i < parameterAnnotations.length; i++) {
-                for (int j = 0; j < parameterAnnotations[i].length; j++) {
-                    if (parameterAnnotations[i][j] instanceof PathVariable) {
-                        PathVariable pathVariable = (PathVariable) parameterAnnotations[i][j];
-                        if (!"".equals(pathVariable.value())) {
-                            uriVariables.put(pathVariable.value(), args[i]);
-                        } else {
-                            uriValues[i] = args[i];
-                        }
-                    } else if (parameterAnnotations[i][j] instanceof RequestParam) {
-                        RequestParam requestParam = (RequestParam) parameterAnnotations[i][j];
-                        if ("".equals(requestParam.value())) {
-                            uri.append("?").append(requestParam.value()).append(args[i]);
-                        }
-                    }
-                }
-            }
-            String command = (String) args[0];
-            Optional<Instance> instance = findCommandServiceInstanceByRoutingPolicy(policy, command);
-            if (!instance.isPresent()) {
-                return "Command not support";
-            }
-            StringBuilder url = new StringBuilder();
-            url.append("http://").append(instance.get().getIp()).append(":").append(instance.get().getPort()).append(uri);
+            url.append(methodMataData.getMapping.value()[0]);
+            generateIntegratedUrl(methodMataData, uriVariables, uriValues, args, url);
             if (!uriVariables.isEmpty()) {
                 return restTemplate.getForObject(url.toString(), returnType, uriVariables);
             } else if (uriValues[0] != null) {
@@ -148,8 +123,72 @@ public class CommandServiceInvocationHandler implements InvocationHandler {
             } else {
                 return restTemplate.getForObject(URI.create(url.toString()), returnType);
             }
+        } else if (methodMataData.requestMethod.equals(RequestMethod.POST)) {
+            url.append(methodMataData.postMapping.value()[0]);
+            generateIntegratedUrl(methodMataData, uriVariables, uriValues, args, url);
+            if (!uriVariables.isEmpty()) {
+                return restTemplate.postForObject(url.toString(), null, returnType, uriVariables);
+            } else if (uriValues[0] != null) {
+                return restTemplate.postForObject(url.toString(), null, returnType, uriValues);
+            } else {
+                return restTemplate.postForObject(URI.create(url.toString()), null, returnType);
+            }
+        } else if (methodMataData.requestMethod.equals(RequestMethod.PUT)) {
+            url.append(methodMataData.putMapping.value()[0]);
+            generateIntegratedUrl(methodMataData, uriVariables, uriValues, args, url);
+            if (!uriVariables.isEmpty()) {
+                restTemplate.put(url.toString(), null, uriVariables);
+                return "";
+            } else if (uriValues[0] != null) {
+                restTemplate.put(url.toString(), null, uriValues);
+                return "";
+            } else {
+                restTemplate.put(URI.create(url.toString()), null);
+                return "";
+            }
+        } else if (methodMataData.requestMethod.equals(RequestMethod.DELETE)) {
+            url.append(methodMataData.deleteMapping.value()[0]);
+            generateIntegratedUrl(methodMataData, uriVariables, uriValues, args, url);
+            if (!uriVariables.isEmpty()) {
+                restTemplate.delete(url.toString(), uriVariables);
+                return "";
+            } else if (uriValues[0] != null) {
+                restTemplate.delete(url.toString(), uriValues);
+                return "";
+            } else {
+                restTemplate.delete(URI.create(url.toString()));
+                return "";
+            }
         }
         return "Unsupported method type";
+    }
+
+    private void generateIntegratedUrl(MethodMataData methodMataData, Map<String, Object> uriVariables,
+                                       Object[] uriValues, Object[] args, StringBuilder uri) {
+        Annotation[][] parameterAnnotations = methodMataData.parameterAnnotations;
+        for (int i = 0; i < parameterAnnotations.length; i++) {
+            for (int j = 0; j < parameterAnnotations[i].length; j++) {
+                Annotation annotation = parameterAnnotations[i][j];
+                handleParameterAnnotation(annotation, uriVariables, uriValues, args, uri, i);
+            }
+        }
+    }
+
+    private void handleParameterAnnotation(Annotation annotation, Map<String, Object> uriVariables, Object[] uriValues,
+                                           Object[] args, StringBuilder uri, int i) {
+        if (annotation instanceof PathVariable) {
+            PathVariable pathVariable = (PathVariable) annotation;
+            if (!"".equals(pathVariable.value())) {
+                uriVariables.put(pathVariable.value(), args[i]);
+            } else {
+                uriValues[i] = args[i];
+            }
+        } else if (annotation instanceof RequestParam) {
+            RequestParam requestParam = (RequestParam) annotation;
+            if ("".equals(requestParam.value())) {
+                uri.append("?").append(requestParam.value()).append(args[i]);
+            }
+        }
     }
 
     private Optional<Instance> findCommandServiceInstanceByRoutingPolicy(RoutingPolicy policy, String command) {
@@ -173,23 +212,6 @@ public class CommandServiceInvocationHandler implements InvocationHandler {
         RouterFactory factory = new RouterFactory();
         Router router = factory.generateRouter(policy);
         return router.route(availableInstanceList);
-    }
-
-
-    private Object handlePostMethodAnnotation(Method method, Object[] args) {
-        return null;
-    }
-
-    private Object handlePutMethodAnnotation(Method method, Object[] args) {
-        return null;
-    }
-
-    private Object handleDeleteMethodAnnotation(Method method, Object[] args) {
-        return null;
-    }
-
-    private Object handlePatchMethodAnnotation(Method method, Object[] args) {
-        return null;
     }
 
     private static class ClassMataData {
