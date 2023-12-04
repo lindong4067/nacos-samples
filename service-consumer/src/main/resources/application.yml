@@ -18,6 +18,11 @@ spring:
       - optional:nacos:service-consumer.yml
       - optional:nacos:user.properties
       - optional:nacos:service.xml
+  freemarker:
+    template-loader-path:
+      - file:\C:\Code\nacos-samples\service-consumer\src\main\resources\templates
+#      - classpath:/templates/
+
 
 user:
   name: Zhang San
